@@ -1,0 +1,36 @@
+d1: 2017.01.01
+d2: 2017.02.28
+d2: .z.d-10
+
+
+/Overall Scorecard - Stats + eTrading PnL  + MTM PnL
+/TODO Add Swaps PnL
+/TODO Add VA and Flow Value
+lj[select requestCount: count ccy1amount, dealCount: sum ?[(status like "CONFIRMED") or (status like "BOOKED") or (status like "EXECUTED"); 1; 0],
+a:sum ?[((status like "CONFIRMED") and (source like "*RFS")); 1; 0],
+b:sum ?[source like "*RFS"; 1; 0],
+hitRatio: sum ?[((status like "CONFIRMED") and (source like "*RFS")); 1; 0]% sum ?[source like "*RFS"; 1; 0]
+by name, effectiveDate.month
+from lj[
+    lj[
+        select time, id, effectiveDate, sym, tradeType, source, clientDeskId, status, traderId, dealtCcy:?[settlementCurrency = `$-3_'($)sym; `$3_'($)sym; `$-3_'($)sym],
+        ccy1:-3_'($)sym, ccy2:3_'($)sym, tradeId: -3_'?[linkId like ""; tradeId; linkId] from starTrade where date within (d1;d2), not platformId = `OMS, not platformId like "";
+        select abs sum ?[direction=`Sell; -1*ccy1amount; ccy1amount],abs sum ?[direction=`Sell; -1*ccy2amount; ccy2amount] by id:tradeId from starTradeLeg where date within (d1;d2), legIndex = 0];
+    1!select clientDeskId:id, name from starClientDesk];
+(select sum totalPnl by name:counterParty, date.month from attributionModelPnl where date within (d1;d2),changeType = `$"CLIENT_TRADE", not clientDeskId = 0N)
+uj
+(select sum m2mUSD_30 by name:takerId, date.month from lj[lj[select tradeId:-3_'tradeId, m2mUSD_30, date, takerId from fxTrade where date within (d1;d2), (status=`CONFIRMED) or (status=`BOOKED);`tradeId xkey 
+select tradeId:-3_'starxchangeId, spotRiskDestination from fxOpvResponse where date within (d1;d2)];
+`takerId xkey t: select id, takerId:name from starClientDesk] where spotRiskDestination like "DEFAULT", not id = 0N)]
+
+
+/VA and Flow Report
+flowVAReport: (" J*     J*     *  FF";1#",") 0: `:VAflowReport.csv
+flowVAReport
+select sum VA, sum FlowValue by ClientCounterparty, GMReportingMonth, Product from flowVAReport
+/TODO Combine Flow Report with SX Client Desk
+h: hopen `:td2l01.nabstarxchangetest.com:2013:qq:qq
+sXAccountsDesks: h"lj[select clientDeskId, wid:id, shortName from starAccount where not clientDeskId = 0N, active=1b; 1!select clientDeskId:id, name from starClientDesk where deleted = 0b]"
+hclose h
+sXAccountsDesks
+select sum VA, sum FlowValue by name from lj[select wid, name from sXAccountsDesks; 1!select wid:WID, ClientCounterparty, Product, VA, FlowValue from flowVAReport]
